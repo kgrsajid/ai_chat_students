@@ -85,6 +85,7 @@ class TitleRequest(BaseModel):
 
 class ChatMessage(BaseModel):
     user_id: str
+    session_id: Optional[str] = None
     message: str
     language: Optional[str] = "ru"
 
@@ -98,6 +99,7 @@ class ChatResponse(BaseModel):
 
 class SummaryRequest(BaseModel):
     user_id: str
+    session_id: Optional[str] = None
     topic: str
     language: Optional[str] = "ru"
 
@@ -268,13 +270,13 @@ def get_flashcard_system(language: str = "ru"):
     return flashcard_systems[language]
 
 
-def get_or_create_session(user_id: str, language: str = "ru"):
+def get_or_create_session(user_id: str, language: str = "ru", session_id: Optional[str] = None):
     """Получить или создать сессию с историей диалога"""
-    session_key = f"{user_id}_{language}"
+    session_key = session_id if session_id else f"{user_id}_{language}"
 
     if session_key not in sessions:
         sessions[session_key] = {
-            "session_id": str(uuid.uuid4()),
+            "session_id": session_key,
             "user_id": user_id,
             "language": language,
             "conversation_history": [],
@@ -347,7 +349,7 @@ async def chat(message: ChatMessage):
     try:
         platform = get_platform(message.language)
 
-        session = get_or_create_session(message.user_id, message.language)
+        session = get_or_create_session(message.user_id, message.language, message.session_id)
 
         matches = platform.search_relevant_content(message.message, top_k=5)
 
@@ -385,6 +387,7 @@ async def generate_summary(request: SummaryRequest):
     """Сгенерировать конспект по теме"""
     try:
         platform = get_platform(request.language)
+        session = get_or_create_session(request.user_id, request.language, request.session_id)
         matches = platform.search_relevant_content(request.topic, top_k=10)
         summary = platform.generate_summary(request.topic, matches)
 
