@@ -563,6 +563,65 @@ Provide a clear and detailed explanation. Use examples if needed."""
 
         return response.choices[0].message.content
 
+    def stream_response_with_context(self, question, matches, conversation_history):
+        """Streaming version — yields text chunks as they arrive from OpenAI"""
+        if not matches:
+            no_info = {
+                "en": "I couldn't find information on this topic. Try rephrasing your question.",
+                "ru": "Не нашёл информации по этой теме. Попробуй переформулировать вопрос.",
+                "kk": "Бұл тақырып бойынша ақпарат таппадым. Сұрағыңызды басқаша тұжырымдаңыз."
+            }
+            yield no_info.get(self.lang, no_info["en"])
+            return
+
+        context = "\n\n".join([
+            f"[{m.metadata.get('full_name', 'Material')}]\n{m.metadata.get('text', '')}"
+            for m in matches
+        ])
+
+        enhanced_system_prompt = f"""{self.t["system_prompt"]}
+
+КРИТИЧЕСКИ ВАЖНО:
+- Внимательно читай ВСЮ историю разговора перед ответом
+- Если вопрос ссылается на предыдущую тему (например: "а это что?", "объясни попроще", "не понял"),
+ОБЯЗАТЕЛЬНО продолжай ТУ ЖЕ тему
+- НЕ переключайся на другую тему, если вопрос - это продолжение предыдущего
+- Когда ученик говорит "не понял" или "попроще", объясняй ТУ ЖЕ самую тему проще, а не новую тему"""
+
+        messages = [{"role": "system", "content": enhanced_system_prompt}]
+
+        for msg in conversation_history[-10:]:
+            messages.append(msg)
+
+        if len(conversation_history) > 0:
+            prompt = (
+                f"Study materials:\n{context}\n\n"
+                "ВАЖНО: Это продолжение нашего разговора. Смотри историю выше!\n\n"
+                f"Student's current question: {question}\n\n"
+                "Provide a clear explanation. If this question refers to previous messages "
+                "(like \"explain simpler\", \"I don't understand\"), continue explaining "
+                "THE SAME topic, not a new one."
+            )
+        else:
+            prompt = (
+                f"Study materials:\n{context}\n\n"
+                f"Student's question: {question}\n\n"
+                "Provide a clear and detailed explanation. Use examples if needed."
+            )
+
+        messages.append({"role": "user", "content": prompt})
+
+        stream = self.openai_client.chat.completions.create(
+            model=self.chat_model,
+            messages=messages,
+            stream=True,
+        )
+
+        for chunk in stream:
+            delta = chunk.choices[0].delta.content
+            if delta:
+                yield delta
+
     def generate_summary(self, topic, matches):
         """Генерация конспекта"""
         if not matches:

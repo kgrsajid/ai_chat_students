@@ -13,6 +13,7 @@ from flashcard import FlashcardDeckConfig, FlashcardSession, FlashcardSystem
 from dotenv import load_dotenv
 from fastapi import BackgroundTasks, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from quiz_system import QuizConfig, QuizResult, QuizSystem
 from school_ai_platform import SchoolAIPlatformV3
@@ -380,6 +381,47 @@ async def chat(message: ChatMessage):
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/chat/stream")
+async def chat_stream(message: ChatMessage):
+    """
+    Streaming chat — returns SSE chunks as AI generates them.
+
+    Each event: data: {"content": "..."}\n\n
+    Final event: data: [DONE]\n\n
+    """
+    platform = get_platform(message.language)
+    session = get_or_create_session(message.user_id, message.language, message.session_id)
+    matches = platform.search_relevant_content(message.message, top_k=5)
+
+    full_response: list[str] = []
+
+    def generate():
+        try:
+            for chunk in platform.stream_response_with_context(
+                message.message,
+                matches,
+                list(session["conversation_history"]),
+            ):
+                full_response.append(chunk)
+                yield f"data: {json.dumps({'content': chunk}, ensure_ascii=False)}\n\n"
+
+            session["conversation_history"].append(
+                {"role": "user", "content": message.message}
+            )
+            session["conversation_history"].append(
+                {"role": "assistant", "content": "".join(full_response)}
+            )
+
+            if len(session["conversation_history"]) > 20:
+                session["conversation_history"] = session["conversation_history"][-20:]
+
+            yield "data: [DONE]\n\n"
+        except Exception as e:
+            yield f"data: {json.dumps({'error': str(e)})}\n\n"
+
+    return StreamingResponse(generate(), media_type="text/event-stream")
 
 
 @app.post("/summary")
