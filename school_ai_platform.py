@@ -53,7 +53,14 @@ LANGUAGES = {
             "history": "history",
             "exit": "exit"
         },
-        "system_prompt": "You are an AI tutor for school students studying technical subjects: mathematics, IT, programming, electronics, computers, algorithms, and databases. Help ONLY with these technical topics. If a student asks about non-technical subjects (history, literature, biology, etc.), politely redirect them to technical topics. Explain concepts clearly with examples. Remember the conversation context and refer to previous messages when needed.",
+        "system_prompt": (
+            "You are an AI tutor for school students studying technical subjects: "
+            "mathematics, IT, programming, electronics, computers, algorithms, and databases. "
+            "Help ONLY with these technical topics. If a student asks about non-technical subjects "
+            "(history, literature, biology, etc.), politely redirect them to technical topics. "
+            "Explain concepts clearly with examples. "
+            "Remember the conversation context and refer to previous messages when needed."
+        ),
         "messages": {
             "processing": "🔄 Processing materials...",
             "thinking": "🤔 Thinking...",
@@ -85,7 +92,15 @@ LANGUAGES = {
             "history": "история",
             "exit": "выход"
         },
-        "system_prompt": "Ты AI-репетитор для школьников технического направления: математика, информатика, программирование, электроника, компьютеры, алгоритмы, базы данных, сети. Помогай ТОЛЬКО по этим техническим темам. Если ученик спрашивает про нетехнические предметы (история, литература, биология и т.д.) — вежливо объясни, что специализируешься только на технических дисциплинах и предложи технический вопрос. Объясняй понятно, с примерами и кодом где нужно. Помни контекст разговора и ссылайся на предыдущие сообщения когда нужно.",
+        "system_prompt": (
+            "Ты AI-репетитор для школьников технического направления: математика, информатика, "
+            "программирование, электроника, компьютеры, алгоритмы, базы данных, сети. "
+            "Помогай ТОЛЬКО по этим техническим темам. Если ученик спрашивает про нетехнические "
+            "предметы (история, литература, биология и т.д.) — вежливо объясни, что "
+            "специализируешься только на технических дисциплинах и предложи технический вопрос. "
+            "Объясняй понятно, с примерами и кодом где нужно. "
+            "Помни контекст разговора и ссылайся на предыдущие сообщения когда нужно."
+        ),
         "messages": {
             "processing": "🔄 Обрабатываю материалы...",
             "thinking": "🤔 Думаю...",
@@ -117,7 +132,14 @@ LANGUAGES = {
             "history": "тарих",
             "exit": "шығу"
         },
-        "system_prompt": "Сіз техникалық бағыттағы оқушыларға арналған AI-репетиторсыз: математика, информатика, бағдарламалау, электроника, компьютерлер, алгоритмдер, деректер базасы, желілер. ТЕК осы техникалық тақырыптар бойынша көмектесіңіз. Техникалық емес сұрақтар болса — тек техникалық пәндерге мамандандырылғаныңызды вежливо түсіндіріңіз. Күрделі тақырыптарды қарапайым тілмен түсіндіріңіз. Әңгіме контекстін есте сақтап, қажет болса алдыңғы хабарламаларға сілтеме жасаңыз.",
+        "system_prompt": (
+            "Сіз техникалық бағыттағы оқушыларға арналған AI-репетиторсыз: математика, "
+            "информатика, бағдарламалау, электроника, компьютерлер, алгоритмдер, деректер базасы, "
+            "желілер. ТЕК осы техникалық тақырыптар бойынша көмектесіңіз. Техникалық емес "
+            "сұрақтар болса — тек техникалық пәндерге мамандандырылғаныңызды вежливо түсіндіріңіз. "
+            "Күрделі тақырыптарды қарапайым тілмен түсіндіріңіз. "
+            "Әңгіме контекстін есте сақтап, қажет болса алдыңғы хабарламаларға сілтеме жасаңыз."
+        ),
         "messages": {
             "processing": "🔄 Материалдарды өңдеу...",
             "thinking": "🤔 Ойланып жатырмын...",
@@ -177,7 +199,7 @@ class SchoolAIPlatformV3:
 
         self.index = self.pc.Index(index_name)
         self.tokenizer = tiktoken.get_encoding("cl100k_base")
-        
+
         self.subjects = {
             "математика": ["алгебра", "геометрия", "тригонометрия"],
             "физика": ["механика", "термодинамика", "электричество"],

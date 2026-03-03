@@ -114,7 +114,6 @@ class SessionInfo(BaseModel):
     created_at: str
 
 
-
 class PlatformQuizGenerateRequest(BaseModel):
     """Запрос на генерацию квиза для образовательной платформы (от школьника)"""
     context: str              # Тема / описание контекста для ИИ
@@ -182,9 +181,54 @@ class PlatformFlashcardGenerateRequest(BaseModel):
     """Запрос на генерацию карточек для образовательной платформы (от школьника)"""
     context: str          # Тема / описание контекста для ИИ — обязателен
     num_cards: int        # Количество карточек — обязателен
-    categories: List[int] # Категории — обязателен
+    categories: List[int]  # Категории — обязателен
     language: str = "ru"
 
+
+class QuizGenerateRequest(BaseModel):
+    """Запрос на генерацию квиза"""
+    mode: str
+    topic: Optional[str] = None
+    num_questions: int = 5
+    difficulty: str = "medium"
+    language: str = "ru"
+    user_id: str = "anonymous"
+
+
+class FlashcardGenerateRequest(BaseModel):
+    """Запрос на генерацию колоды карточек"""
+    mode: str = "free_text"
+    topic: Optional[str] = None
+    context: str
+    num_cards: int = 10
+    language: str = "ru"
+    user_id: str = "anonymous"
+    categories: Optional[List[int]] = None
+
+
+class FlashcardResponse(BaseModel):
+    """Ответ с одной карточкой"""
+    term: str
+    definition: str
+    example: Optional[str] = None
+    topic: str
+
+
+class FlashcardReviewRequest(BaseModel):
+    """Запрос на отметку карточки"""
+    deck_id: str
+    card_index: int
+    knew_it: bool
+
+
+class DeckProgressResponse(BaseModel):
+    """Прогресс изучения колоды"""
+    deck_id: str
+    total_cards: int
+    reviewed: int
+    known: int
+    learning: int
+    remaining: int
 
 
 def get_platform(language: str = "ru"):
@@ -264,7 +308,6 @@ async def health_check():
     return {
         "status": "healthy",
         "active_languages": list(platforms.keys()),
-        "active_sessions": len(sessions),
         "active_sessions": len(sessions)
     }
 
@@ -279,7 +322,11 @@ async def generate_title(request: TitleRequest):
             messages=[
                 {
                     "role": "system",
-                    "content": "Generate a short chat title (3-5 words) based on the user's message. The title should reflect the topic. Return ONLY the title text, no quotes, no punctuation at the end."
+                    "content": (
+                        "Generate a short chat title (3-5 words) based on the user's message. "
+                        "The title should reflect the topic. "
+                        "Return ONLY the title text, no quotes, no punctuation at the end."
+                    )
                 },
                 {"role": "user", "content": request.message}
             ],
@@ -940,7 +987,7 @@ async def generate_flashcards(request: FlashcardGenerateRequest):
             "description": f"AI-сгенерированные карточки по теме: {request.context}",
             "tags": [request.context.lower().replace(" ", "_")],
             "categories": request.categories,
-            "cards": formatted_cards,
+            "cards": [c.dict() for c in cards],
         }
 
     except HTTPException:
