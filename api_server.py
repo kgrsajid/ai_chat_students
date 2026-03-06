@@ -644,7 +644,47 @@ async def get_quiz_topics(language: str = "ru"):
 
 @app.post("/flashcards/generate-for-platform")
 async def generate_flashcards_for_platform(request: PlatformFlashcardGenerateRequest):
-    pass
+    """
+    Сгенерировать карточки для образовательной платформы.
+
+    Получает: context, num_cards, categories, language.
+    Возвращает JSON в формате Go-бэкенда.
+    """
+    try:
+        fc_system = get_flashcard_system(request.language)
+
+        config = FlashcardDeckConfig(
+            mode="free_text",
+            topic=request.context,
+            num_cards=request.num_cards,
+            language=request.language,
+        )
+
+        cards = fc_system.generate_flashcards(config)
+
+        if not cards:
+            raise HTTPException(status_code=500, detail="Failed to generate flashcards")
+
+        formatted_cards = []
+        for card in cards:
+            formatted_cards.append({
+                "question": card.term,
+                "answer": card.definition,
+            })
+
+        return {
+            "title": request.context,
+            "description": f"AI-сгенерированные карточки по теме: {request.context}",
+            "isPrivate": False,
+            "tags": [request.context.lower().replace(" ", "_")],
+            "categories": request.categories,
+            "cards": formatted_cards,
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.post("/quiz/generate")
