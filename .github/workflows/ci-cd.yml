@@ -1,4 +1,4 @@
-name: CI
+name: CI/CD
 
 on:
   push:
@@ -25,10 +25,11 @@ jobs:
       - name: Run flake8
         run: flake8 *.py --max-line-length=120 --exclude=venv
 
-  build:
-    name: Build Docker image
+  build-and-deploy:
+    name: Build and Deploy
     runs-on: self-hosted
     needs: lint
+    if: github.ref == 'refs/heads/main'
     steps:
       - uses: actions/checkout@v4
 
@@ -40,6 +41,13 @@ jobs:
         with:
           context: .
           push: false
-          tags: school-ai-platform:${{ github.sha }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          load: true
+          tags: school-ai-platform:latest
+
+      - name: Deploy with docker compose
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          PINECONE_API_KEY: ${{ secrets.PINECONE_API_KEY }}
+        run: |
+          docker compose down
+          docker compose up -d
