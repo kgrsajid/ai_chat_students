@@ -240,10 +240,10 @@ def get_platform(language: str = "ru"):
         OPENAI_KEY = os.getenv("OPENAI_API_KEY")
         PINECONE_KEY = os.getenv("PINECONE_API_KEY")
 
-        if not OPENAI_KEY or not PINECONE_KEY:
+        if not OPENAI_KEY:
             raise HTTPException(
                 status_code=500,
-                detail="API keys not configured. Set OPENAI_API_KEY and PINECONE_API_KEY"
+                detail="OpenAI API key not configured. Set OPENAI_API_KEY"
             )
 
         platforms[language] = SchoolAIPlatformV3(

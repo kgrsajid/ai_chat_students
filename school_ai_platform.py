@@ -169,35 +169,38 @@ class SchoolAIPlatformV3:
 
         self.openai_client = OpenAI(api_key=openai_api_key)
         self.embedding_model = "text-embedding-3-small"
-        self.chat_model = "gpt-5-mini"
-
-        from pinecone import Pinecone
-        self.pc = Pinecone(api_key=pinecone_api_key)
-        self.index_name = index_name
+        self.chat_model = "gpt-4o-mini"
 
         self.topics_list_file = "school_topics.json"
         self.chat_history_folder = Path("chat_history")
         self.chat_history_folder.mkdir(exist_ok=True)
 
-        try:
-            existing = [idx.name for idx in self.pc.list_indexes()]
-        except Exception:
-            existing = []
-
-        if index_name not in existing:
-            print(f"📚 Creating knowledge base: {index_name}")
+        # Pinecone is optional
+        self.pc = None
+        self.index = None
+        self.index_name = index_name
+        if pinecone_api_key:
             try:
-                self.pc.create_index(
-                    name=index_name,
-                    dimension=1536,
-                    metric="cosine",
-                    spec={"serverless": {"cloud": "aws", "region": "us-east-1"}}
-                )
-                time.sleep(20)
+                from pinecone import Pinecone
+                self.pc = Pinecone(api_key=pinecone_api_key)
+                existing = [idx.name for idx in self.pc.list_indexes()]
+                if index_name not in existing:
+                    print(f"📚 Creating knowledge base: {index_name}")
+                    self.pc.create_index(
+                        name=index_name,
+                        dimension=1536,
+                        metric="cosine",
+                        spec={"serverless": {"cloud": "aws", "region": "us-east-1"}}
+                    )
+                    time.sleep(20)
+                self.index = self.pc.Index(index_name)
+                print(f"✅ Connected to Pinecone index: {index_name}")
             except Exception as e:
-                print(f"⚠️ Index creation error: {e}")
-
-        self.index = self.pc.Index(index_name)
+                print(f"⚠️ Pinecone unavailable: {e}")
+                self.pc = None
+                self.index = None
+        else:
+            print("⚠️ Pinecone not configured — using OpenAI directly")
         self.tokenizer = tiktoken.get_encoding("cl100k_base")
 
         self.subjects = {
@@ -434,7 +437,8 @@ class SchoolAIPlatformV3:
                         }
                     })
 
-                self.index.upsert(vectors=vectors)
+                if self.index:
+                    self.index.upsert(vectors=vectors)
                 time.sleep(0.3)
 
             return True, {
@@ -498,6 +502,8 @@ class SchoolAIPlatformV3:
 
     def search_relevant_content(self, query, top_k=5):
         """Поиск релевантного контента"""
+        if not self.index:
+            return []
         emb = self.create_embeddings([query])[0]
         results = self.index.query(vector=emb, top_k=top_k, include_metadata=True)
         return results.matches
@@ -508,12 +514,21 @@ class SchoolAIPlatformV3:
         КЛЮЧЕВОЕ УЛУЧШЕНИЕ: AI помнит предыдущие сообщения
         """
         if not matches:
-            no_info = {
-                "en": "I couldn't find information on this topic. Try rephrasing your question.",
-                "ru": "Не нашёл информации по этой теме. Попробуй переформулировать вопрос.",
-                "kk": "Бұл тақырып бойынша ақпарат таппадым. Сұрағыңызды басқаша тұжырымдаңыз."
-            }
-            return no_info.get(self.lang, no_info["en"])
+            # Fallback: ask OpenAI directly without vector context
+            messages = [
+                {"role": "system", "content": "You are a helpful educational AI tutor. Answer the student's question to the best of your ability. Keep answers clear and concise."}
+            ]
+            for msg in conversation_history[-10:]:
+                messages.append(msg)
+            messages.append({"role": "user", "content": question})
+
+            response = self.openai_client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=messages,
+                max_tokens=1000,
+                temperature=0.7
+            )
+            return response.choices[0].message.content
 
         context = "\n\n".join([
             f"[{m.metadata.get('full_name', 'Material')}]\n{m.metadata.get('text', '')}"
@@ -566,12 +581,24 @@ Provide a clear and detailed explanation. Use examples if needed."""
     def stream_response_with_context(self, question, matches, conversation_history):
         """Streaming version — yields text chunks as they arrive from OpenAI"""
         if not matches:
-            no_info = {
-                "en": "I couldn't find information on this topic. Try rephrasing your question.",
-                "ru": "Не нашёл информации по этой теме. Попробуй переформулировать вопрос.",
-                "kk": "Бұл тақырып бойынша ақпарат таппадым. Сұрағыңызды басқаша тұжырымдаңыз."
-            }
-            yield no_info.get(self.lang, no_info["en"])
+            # Fallback: stream from OpenAI directly without vector context
+            messages = [
+                {"role": "system", "content": "You are a helpful educational AI tutor. Answer the student's question to the best of your ability. Keep answers clear and concise."}
+            ]
+            for msg in conversation_history[-10:]:
+                messages.append(msg)
+            messages.append({"role": "user", "content": question})
+
+            stream = self.openai_client.chat.completions.create(
+                model=self.chat_model,
+                messages=messages,
+                stream=True,
+                max_tokens=1000,
+                temperature=0.7
+            )
+            for chunk in stream:
+                if chunk.choices[0].delta.content:
+                    yield chunk.choices[0].delta.content
             return
 
         context = "\n\n".join([
@@ -658,12 +685,15 @@ Write concisely but informatively."""
         print(f"\n👤 User: {user_id}")
         print("="*60)
 
-        stats = self.index.describe_index_stats()
-        if stats.total_vector_count == 0:
-            print(f"\n{self.t['messages']['empty_db']}\n")
-            return
+        if self.index:
+            stats = self.index.describe_index_stats()
+            if stats.total_vector_count == 0:
+                print(f"\n{self.t['messages']['empty_db']}\n")
+                return
+            print(f"✅ Available materials: {stats.total_vector_count} chunks")
+        else:
+            print("⚠️ Pinecone not configured — using OpenAI directly")
 
-        print(f"✅ Available materials: {stats.total_vector_count} chunks")
         print("\n💬 I'm ready to help with studying!")
         print("Commands:")
         print(f"  • '{self.t['commands']['summary']} <topic>' - get summary")
@@ -791,10 +821,9 @@ def main():
     OPENAI_KEY = os.getenv("OPENAI_API_KEY")
     PINECONE_KEY = os.getenv("PINECONE_API_KEY")
 
-    if not OPENAI_KEY or not PINECONE_KEY:
-        print("❌ Set API keys in .env file!")
+    if not OPENAI_KEY:
+        print("❌ Set OpenAI API key in .env file!")
         print("   OPENAI_API_KEY=your_key")
-        print("   PINECONE_API_KEY=your_key")
         return
 
     platform = SchoolAIPlatformV3(OPENAI_KEY, PINECONE_KEY, language=lang)
