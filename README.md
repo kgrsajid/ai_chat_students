@@ -1,434 +1,176 @@
-cat > /mnt/user-data/outputs/README_V3.md << 'EOF'
-# 🎓 AI Платформа для Школьников v3.0
+# 🎓 AI Chat Backend
 
-Образовательная платформа с AI-помощником для изучения школьных предметов.
+FastAPI-based Python backend for AI-powered chat with educational content for Kazakhstan school students.
 
-## 🌟 Новое в версии 3.0
+## ✨ Features
 
-### ✅ Главное улучшение: **Контекст Диалога**
-AI теперь **помнит весь разговор** и может ссылаться на предыдущие сообщения!
+### AI Chat with Context Memory
+- Full conversation history is maintained per session
+- AI remembers previous messages and can reference them
+- Natural, contextual responses
 
-**Было:**
-```
-Ты: Объясни производные
-AI: [Объяснение]
+### OpenAI Integration
+- Powered by GPT-4o-mini for fast, accurate responses
+- Fallback to direct AI responses when vector DB is empty
+- Streaming support for real-time responses
 
-Ты: Объясни попроще
-AI: [Объясняет что-то другое - не помнит контекст] ❌
-```
+### Vector Search (Optional)
+- Pinecone integration for educational content search
+- **Now optional** - chat works fully with OpenAI only
+- Upload study materials for contextual answers
 
-**Стало:**
-```
-Ты: Объясни производные
-AI: [Объяснение]
-
-Ты: Объясни попроще
-AI: Конечно! Давай упростим объяснение производных, о которых я только что рассказал... ✅
-```
-
-### 🌍 Мультиязычность
+### Multilingual Support
 - 🇬🇧 English
 - 🇷🇺 Русский
 - 🇰🇿 Қазақша
 
-Выбор языка при запуске. Весь интерфейс и ответы на выбранном языке.
+## 🚀 Quick Start
 
-### 📚 Поддержка EPUB
-Теперь можно загружать книги в формате EPUB!
+### Prerequisites
+- Python 3.10+
+- OpenAI API key
 
-**Поддерживаемые форматы:**
-- TXT, DOCX, PDF, **EPUB**
-
-### 🌐 REST API для веб-интеграции
-Полноценный FastAPI сервер для интеграции с любым сайтом.
-
-### 🎨 Готовый веб-интерфейс
-Красивый, современный интерфейс с анимациями и адаптивным дизайном.
-
-## 📋 Требования
+### Installation
 
 ```bash
+# Create virtual environment
+python -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+
+# Install dependencies
 pip install -r requirements.txt
 ```
 
-Для EPUB:
-```bash
-pip install ebooklib beautifulsoup4
-```
+### Configuration
 
-Для веб-интеграции:
-```bash
-pip install fastapi uvicorn
-```
+Create `.env` file:
 
-## ⚙️ Настройка
-
-Создай файл `.env`:
 ```env
-OPENAI_API_KEY=your_openai_api_key
-PINECONE_API_KEY=your_pinecone_api_key
+OPENAI_API_KEY=sk-your-openai-api-key
+# PINECONE_API_KEY=pc-your-pinecone-api-key  # Optional
 ```
 
-## 🚀 Запуск
+**Note:** Pinecone is optional. Without it, the chat uses OpenAI directly for all responses.
 
-### 1. Консольная версия (с контекстом диалога)
-
-```bash
-python school_ai_platform_v3.py
-```
-
-При запуске выбери язык (1-3).
-
-### 2. API сервер (для веб-интеграции)
+### Running
 
 ```bash
+# API Server
 python api_server.py
+
+# Access docs at http://localhost:8000/docs
 ```
 
-Документация API: http://localhost:8000/docs
+## 🌐 API Endpoints
 
-### 3. Веб-интерфейс
+### Chat
+- `POST /chat` - Send message (with session context)
+- `POST /chat/new` - Create new session & send first message
+- `WebSocket /ws/{session_id}` - Real-time streaming chat
 
-1. Запусти API сервер (шаг 2)
-2. Открой `web_interface.html` в браузере
+### Sessions
+- `GET /history/{user_id}` - Get chat history
+- `DELETE /session/{user_id}` - Clear session
 
-## 📖 Использование
+### Materials
+- `POST /upload` - Upload study materials
+- `GET /subjects` - List available subjects
+- `GET /stats` - Knowledge base statistics
 
-### Консольная версия
+### Other
+- `GET /health` - Health check
+- `GET /summary` - Generate topic summary
 
-```
-SELECT LANGUAGE / ВЫБЕРИТЕ ЯЗЫК / ТІЛДІ ТАҢДАҢЫЗ
-1. English
-2. Русский
-3. Қазақша
+## 📖 Usage Examples
 
-Выбор: 2
+### Send a Message
 
-🎓 AI ПЛАТФОРМА ДЛЯ ШКОЛЬНИКОВ
-1 - Загрузить учебные материалы
-2 - Начать учиться (чат с AI)
-3 - Показать доступные предметы
-4 - Посмотреть статистику
-
-Выбор: 2
-
-📝 Ты: Объясни что такое производная
-🤖: [Подробное объяснение]
-
-📝 Ты: А теперь объясни попроще
-🤖: Конечно! Давай упростим то, что я только что объяснил про производные...
-```
-
-### REST API
-
-**Отправить сообщение (с контекстом):**
 ```bash
 curl -X POST http://localhost:8000/chat \
   -H "Content-Type: application/json" \
   -d '{
     "user_id": "student123",
-    "message": "Объясни производные",
+    "message": "Explain derivatives",
     "language": "ru"
   }'
 ```
 
-**Создать конспект:**
+### Create New Session
+
 ```bash
-curl -X POST http://localhost:8000/summary \
+curl -X POST http://localhost:8000/chat/new \
   -H "Content-Type: application/json" \
   -d '{
     "user_id": "student123",
-    "topic": "производные",
-    "language": "ru"
+    "message": "What is photosynthesis?",
+    "language": "en"
   }'
 ```
 
-**Получить историю:**
+### Get Chat History
+
 ```bash
-curl http://localhost:8000/history/student123?language=ru
+curl http://localhost:8000/history/student123
 ```
 
-**Очистить сессию:**
-```bash
-curl -X DELETE http://localhost:8000/session/student123?language=ru
-```
+### WebSocket Chat (JavaScript)
 
-### Веб-интеграция
-
-**JavaScript:**
 ```javascript
-const response = await fetch('http://localhost:8000/chat', {
-  method: 'POST',
-  headers: {'Content-Type': 'application/json'},
-  body: JSON.stringify({
-    user_id: 'student123',
-    message: 'Объясни производные',
-    language: 'ru'
-  })
-});
+const ws = new WebSocket(
+  `ws://localhost:8000/ws/session123?user_id=student123&language=ru`
+);
 
-const data = await response.json();
-console.log(data.response);
-```
+ws.onopen = () => {
+  ws.send("Explain the water cycle");
+};
 
-**React:**
-```jsx
-const sendMessage = async (message) => {
-  const response = await fetch('http://localhost:8000/chat', {
-    method: 'POST',
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({
-      user_id: userId,
-      message: message,
-      language: 'ru'
-    })
-  });
-  return await response.json();
+ws.onmessage = (event) => {
+  console.log(event.data);  // Streaming response
 };
 ```
 
-## 🎯 Структура проекта
+## 📁 Project Structure
 
 ```
-school-ai-platform-v3/
-├── school_ai_platform_v3.py    # Основной модуль с контекстом
-├── api_server.py               # REST API сервер
-├── web_interface.html          # Веб-интерфейс
-├── requirements.txt            # Зависимости
-├── .env                        # API ключи
-├── materials/                  # Учебные материалы
-│   ├── математика/
-│   ├── физика/
-│   └── ...
-└── chat_history/               # История (создаётся автоматически)
+chatbackend/
+├── api_server.py          # FastAPI server
+├── school_ai_platform.py   # AI platform core
+├── school_topics.json      # Subject knowledge base
+├── requirements.txt        # Python dependencies
+├── .env                    # Environment variables
+└── README.md
 ```
 
-## 💬 Как работает контекст диалога
+## 🎓 Educational Features
 
-### Консольная версия:
-- Сохраняет последние 10-20 сообщений в памяти сессии
-- Передаёт весь контекст в каждый запрос к AI
-- AI видит всю историю и может ссылаться на неё
+### Subject Areas
+- Mathematics (Algebra, Geometry, Calculus)
+- Physics (Mechanics, Optics, Electricity)
+- Chemistry (Organic, Inorganic, Physical)
+- Biology (Cell biology, Genetics, Ecology)
+- History (World, Kazakhstan)
+- Geography
+- Languages (Kazakh, Russian, English)
 
-### API версия:
-- Каждый `user_id` имеет свою сессию
-- Сессия хранит историю диалога
-- При каждом запросе история передаётся в AI
-- **Важно:** Используй один и тот же `user_id` для сохранения контекста!
+### Response Modes
+- **Direct AI**: General questions answered by OpenAI
+- **Contextual**: Uses uploaded materials when available
+- **Streaming**: Real-time token-by-token responses
 
-## 📚 API Эндпоинты
+## 🔧 Configuration Options
 
-| Метод | Путь | Описание |
-|-------|------|----------|
-| POST | /chat | Отправить сообщение (с контекстом) |
-| POST | /summary | Создать конспект |
-| GET | /session/{user_id} | Получить информацию о сессии |
-| DELETE | /session/{user_id} | Очистить сессию |
-| GET | /history/{user_id} | Получить историю сообщений |
-| GET | /stats | Статистика базы знаний |
-| GET | /subjects | Доступные предметы |
-| GET | /languages | Поддерживаемые языки |
-| GET | /health | Проверка здоровья сервиса |
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `OPENAI_API_KEY` | Yes | Your OpenAI API key |
+| `PINECONE_API_KEY` | No | For vector search (chat works without it) |
+| `PINECONE_INDEX` | No | Pinecone index name (default: school-topics) |
 
-## 🌍 Мультиязычность
-
-При запуске консольной версии выбери язык. Все сообщения и интерфейс будут на выбранном языке.
-
-В API укажи язык в параметре:
-```json
-{
-  "language": "ru"  // "en", "ru", или "kk"
-}
-```
-
-## 📖 Поддержка EPUB
-
-**Установка:**
-```bash
-pip install ebooklib beautifulsoup4
-```
-
-**Использование:**
-Просто положи `.epub` файлы в папку `materials/` и загрузи как обычно (пункт 1 в меню).
-
-## 🔧 Настройка для продакшена
-
-### CORS для веб-интеграции:
-
-В `api_server.py` укажи свой домен:
-```python
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["https://ваш-сайт.com"],  # Вместо ["*"]
-)
-```
-
-### Использование Redis для сессий:
-
-```python
-import redis
-r = redis.Redis(host='localhost', port=6379)
-```
-
-### Деплой с Gunicorn:
+## 🐳 Docker
 
 ```bash
-gunicorn api_server:app -w 4 -k uvicorn.workers.UvicornWorker
+docker compose up -d
 ```
 
-## 🐛 Решение проблем
+## 📝 License
 
-**AI не помнит контекст:**
-- Убедись, что используешь `school_ai_platform_v3.py`
-- Проверь, что `user_id` одинаковый для всех сообщений в сессии
-
-**EPUB не читается:**
-```bash
-pip install ebooklib beautifulsoup4
-```
-
-**API не доступен:**
-- Запусти сервер: `python api_server.py`
-- Проверь: http://localhost:8000/health
-
-**Веб-интерфейс не работает:**
-- Сначала запусти API сервер
-- Проверь CORS настройки
-- Открой консоль браузера для ошибок
-
-## 📊 Сравнение версий
-
-| Функция | v2.0 | v3.0 |
-|---------|------|------|
-| Контекст диалога | ❌ | ✅ |
-| Мультиязычность | ❌ | ✅ (3 языка) |
-| EPUB | ❌ | ✅ |
-| REST API | ❌ | ✅ |
-| Веб-интерфейс | ❌ | ✅ |
-| История чатов | ✅ | ✅ |
-
-## 📝 Документация
-
-- `V3_FEATURES.md` - Полная документация новых возможностей
-- `QUICKSTART_V3_RU.txt` - Быстрый старт на русском
-- `api_server.py` - Автодокументация FastAPI (Swagger UI)
-
-## 📄 Лицензия
-
-MIT License
-
-## 👨‍💻 Автор
-
-Создано для помощи школьникам в обучении 🎓
-
----
-
-**Версия:** 3.0  
-**Дата:** 2025  
-**Статус:** Production Ready ✅
-EOF
-cat /mnt/user-data/outputs/README_V3.md | head -100
-Output
-
-# 🎓 AI Платформа для Школьников v3.0
-
-Образовательная платформа с AI-помощником для изучения школьных предметов.
-
-## 🌟 Новое в версии 3.0
-
-### ✅ Главное улучшение: **Контекст Диалога**
-AI теперь **помнит весь разговор** и может ссылаться на предыдущие сообщения!
-
-**Было:**
-```
-Ты: Объясни производные
-AI: [Объяснение]
-
-Ты: Объясни попроще
-AI: [Объясняет что-то другое - не помнит контекст] ❌
-```
-
-**Стало:**
-```
-Ты: Объясни производные
-AI: [Объяснение]
-
-Ты: Объясни попроще
-AI: Конечно! Давай упростим объяснение производных, о которых я только что рассказал... ✅
-```
-
-### 🌍 Мультиязычность
-- 🇬🇧 English
-- 🇷🇺 Русский
-- 🇰🇿 Қазақша
-
-Выбор языка при запуске. Весь интерфейс и ответы на выбранном языке.
-
-### 📚 Поддержка EPUB
-Теперь можно загружать книги в формате EPUB!
-
-**Поддерживаемые форматы:**
-- TXT, DOCX, PDF, **EPUB**
-
-### 🌐 REST API для веб-интеграции
-Полноценный FastAPI сервер для интеграции с любым сайтом.
-
-### 🎨 Готовый веб-интерфейс
-Красивый, современный интерфейс с анимациями и адаптивным дизайном.
-
-## 📋 Требования
-
-```bash
-pip install -r requirements.txt
-```
-
-Для EPUB:
-```bash
-pip install ebooklib beautifulsoup4
-```
-
-Для веб-интеграции:
-```bash
-pip install fastapi uvicorn
-```
-
-## ⚙️ Настройка
-
-Создай файл `.env`:
-```env
-OPENAI_API_KEY=your_openai_api_key
-PINECONE_API_KEY=your_pinecone_api_key
-```
-
-## 🚀 Запуск
-
-### 1. Консольная версия (с контекстом диалога)
-
-```bash
-python school_ai_platform_v3.py
-```
-
-При запуске выбери язык (1-3).
-
-### 2. API сервер (для веб-интеграции)
-
-```bash
-python api_server.py
-```
-
-Документация API: http://localhost:8000/docs
-
-### 3. Веб-интерфейс
-
-1. Запусти API сервер (шаг 2)
-2. Открой `web_interface.html` в браузере
-
-## 📖 Использование
-
-### Консольная версия
-
-```
-SELECT LANGUAGE / ВЫБЕРИТЕ ЯЗЫК / ТІЛДІ ТАҢДАҢЫЗ
-1. English
-2. Русский
-3. Қазақша
+MIT
