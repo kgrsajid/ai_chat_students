@@ -508,34 +508,44 @@ class SchoolAIPlatformV3:
         results = self.index.query(vector=emb, top_k=top_k, include_metadata=True)
         return results.matches
 
-    def generate_response_with_context(self, question, matches, conversation_history):
-        """
-        Генерация ответа с учётом контекста диалога
-        КЛЮЧЕВОЕ УЛУЧШЕНИЕ: AI помнит предыдущие сообщения
-        """
-        if not matches:
-            # Fallback: ask OpenAI directly without vector context
-            messages = [
-                {"role": "system", "content": "You are a helpful educational AI tutor. Answer the student's question to the best of your ability. Keep answers clear and concise."}
-            ]
-            for msg in conversation_history[-10:]:
-                messages.append(msg)
-            messages.append({"role": "user", "content": question})
-
-            response = self.openai_client.chat.completions.create(
-                model="gpt-4o-mini",
-                messages=messages,
-                max_tokens=1000,
-                temperature=0.7
+    def _build_grade_context(self, grade):
+        """Build grade-appropriate instructions for the system prompt."""
+        if grade is None or grade <= 0:
+            return ""
+        if grade <= 4:
+            band = "Sprouts (0-4 класс)"
+            instructions = (
+                "- Ученик в начальной школе (0-4 класс).\n"
+                "- Используй ОЧЕНЬ простые слова, короткие предложения.\n"
+                "- Объясняй как маленькому ребёнку: много примеров, аналогий.\n"
+                "- Избегай сложных терминов. Если нужен термин — обязательно объясни его простыми словами.\n"
+                "- Используй эмодзи для наглядности 🌱\n"
+                "- Хвали за правильные ответы, ободряй при ошибках."
             )
-            return response.choices[0].message.content
+        elif grade <= 9:
+            band = "Explorers (5-9 класс)"
+            instructions = (
+                f"- Ученик {grade} класса средней школы.\n"
+                "- Объясняй структурированно, можно использовать базовые формулы и определения.\n"
+                "- Адаптируй сложность к {grade} классу.\n"
+                "- Давай примеры из реальной жизни.\n"
+                "- Можешь использовать простой код для объяснения, если уместно."
+            )
+        else:
+            band = "Champions (10-11 класс)"
+            instructions = (
+                f"- Ученик {grade} класса, готовится к экзаменам (UNT/ЕНТ).\n"
+                "- Давай глубокие, структурированные объяснения.\n"
+                "- Используй правильную терминологию и формулы.\n"
+                "- Подготавливай к экзаменационным вопросам по этой теме.\n"
+                "- Указывай типичные ошибки и подводные камни."
+            )
+        return f"\n\nУРОВЕНЬ УЧЕНИКА: {band}\n{instructions}"
 
-        context = "\n\n".join([
-            f"[{m.metadata.get('full_name', 'Material')}]\n{m.metadata.get('text', '')}"
-            for m in matches
-        ])
-
-        enhanced_system_prompt = f"""{self.t["system_prompt"]}
+    def _build_enhanced_prompt(self, base_prompt, grade=None):
+        """Build enhanced system prompt with grade context."""
+        grade_context = self._build_grade_context(grade)
+        return f"""{base_prompt}{grade_context}
 
 КРИТИЧЕСКИ ВАЖНО:
 - Внимательно читай ВСЮ историю разговора перед ответом
@@ -578,12 +588,79 @@ Provide a clear and detailed explanation. Use examples if needed."""
 
         return response.choices[0].message.content
 
-    def stream_response_with_context(self, question, matches, conversation_history):
+    def generate_response_with_context(self, question, matches, conversation_history, grade=None):
+        """
+        Генерация ответа с учётом контекста диалога
+        КЛЮЧЕВОЕ УЛУЧШЕНИЕ: AI помнит предыдущие сообщения + адаптация к классу
+        """
+        if not matches:
+            # Fallback: ask OpenAI directly without vector context
+            grade_context = self._build_grade_context(grade)
+            system_msg = f"You are a helpful educational AI tutor. Answer the student's question to the best of your ability. Keep answers clear and concise.{grade_context}"
+            messages = [
+                {"role": "system", "content": system_msg}
+            ]
+            for msg in conversation_history[-10:]:
+                messages.append(msg)
+            messages.append({"role": "user", "content": question})
+
+            response = self.openai_client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=messages,
+                max_tokens=1000,
+                temperature=0.7
+            )
+            return response.choices[0].message.content
+
+        context = "\n\n".join([
+            f"[{m.metadata.get('full_name', 'Material')}]\n{m.metadata.get('text', '')}"
+            for m in matches
+        ])
+
+        enhanced_system_prompt = self._build_enhanced_prompt(self.t["system_prompt"], grade)
+
+        messages = [
+            {"role": "system", "content": enhanced_system_prompt}
+        ]
+
+        for msg in conversation_history[-10:]:
+            messages.append(msg)
+
+        if len(conversation_history) > 0:
+            prompt = f"""Study materials:
+{context}
+
+ВАЖНО: Это продолжение нашего разговора. Смотри историю выше!
+
+Student's current question: {question}
+
+Provide a clear explanation. If this question refers to previous messages
+(like "explain simpler", "I don't understand"), continue explaining THE SAME topic, not a new one."""
+        else:
+            prompt = f"""Study materials:
+{context}
+
+Student's question: {question}
+
+Provide a clear and detailed explanation. Use examples if needed."""
+
+        messages.append({"role": "user", "content": prompt})
+
+        response = self.openai_client.chat.completions.create(
+            model=self.chat_model,
+            messages=messages,
+        )
+
+        return response.choices[0].message.content
+
+    def stream_response_with_context(self, question, matches, conversation_history, grade=None):
         """Streaming version — yields text chunks as they arrive from OpenAI"""
         if not matches:
             # Fallback: stream from OpenAI directly without vector context
+            grade_context = self._build_grade_context(grade)
+            system_msg = f"You are a helpful educational AI tutor. Answer the student's question to the best of your ability. Keep answers clear and concise.{grade_context}"
             messages = [
-                {"role": "system", "content": "You are a helpful educational AI tutor. Answer the student's question to the best of your ability. Keep answers clear and concise."}
+                {"role": "system", "content": system_msg}
             ]
             for msg in conversation_history[-10:]:
                 messages.append(msg)
@@ -606,14 +683,7 @@ Provide a clear and detailed explanation. Use examples if needed."""
             for m in matches
         ])
 
-        enhanced_system_prompt = f"""{self.t["system_prompt"]}
-
-КРИТИЧЕСКИ ВАЖНО:
-- Внимательно читай ВСЮ историю разговора перед ответом
-- Если вопрос ссылается на предыдущую тему (например: "а это что?", "объясни попроще", "не понял"),
-ОБЯЗАТЕЛЬНО продолжай ТУ ЖЕ тему
-- НЕ переключайся на другую тему, если вопрос - это продолжение предыдущего
-- Когда ученик говорит "не понял" или "попроще", объясняй ТУ ЖЕ самую тему проще, а не новую тему"""
+        enhanced_system_prompt = self._build_enhanced_prompt(self.t["system_prompt"], grade)
 
         messages = [{"role": "system", "content": enhanced_system_prompt}]
 

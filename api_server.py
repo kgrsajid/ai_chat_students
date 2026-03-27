@@ -89,6 +89,7 @@ class ChatMessage(BaseModel):
     session_id: Optional[str] = None
     message: str
     language: Optional[str] = "ru"
+    grade: Optional[int] = None
 
 
 class ChatResponse(BaseModel):
@@ -357,7 +358,8 @@ async def chat(message: ChatMessage):
         response = platform.generate_response_with_context(
             message.message,
             matches,
-            session["conversation_history"]
+            session["conversation_history"],
+            grade=message.grade,
         )
 
         session["conversation_history"].append({
@@ -403,6 +405,7 @@ async def chat_stream(message: ChatMessage):
                 message.message,
                 matches,
                 list(session["conversation_history"]),
+                grade=message.grade,
             ):
                 full_response.append(chunk)
                 yield f"data: {json.dumps({'content': chunk}, ensure_ascii=False)}\n\n"
@@ -1015,6 +1018,132 @@ async def get_flashcard_topics(language: str = "ru"):
         return {"topics": topics}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+class AssignmentEvaluateRequest(BaseModel):
+    """Запрос на оценку задания ученика через LLM"""
+    question: str              # The question asked by teacher
+    student_answer: str        # Student's text answer
+    rubric: str = ""           # Optional evaluation criteria from teacher
+    grade: int = 5             # Student's grade level for adaptive evaluation
+    language: str = "ru"
+
+
+class AssignmentEvaluateResponse(BaseModel):
+    """Результат оценки задания"""
+    score: int                  # 0-100
+    max_score: int = 100
+    feedback: str              # LLM explanation
+    strengths: List[str]       # What student did well
+    improvements: List[str]    # What to improve
+    grade_level: str           # How well it matches grade expectations
+
+
+@app.post("/assignment/evaluate", response_model=AssignmentEvaluateResponse)
+async def evaluate_assignment(request: AssignmentEvaluateRequest):
+    """
+    Evaluate a student's assignment answer using OpenAI LLM.
+
+    Teacher creates assignment → student submits text answer → LLM evaluates.
+    Returns score (0-100), feedback, strengths, and areas for improvement.
+    """
+    try:
+        platform = get_platform(request.language)
+
+        # Build grade-adaptive evaluation prompt
+        if request.grade <= 4:
+            level_desc = f"ученик начальной школы ({request.grade} класс)"
+            eval_note = "Будь мягче в оценке, хвали за усилия, объясняй ошибки простыми словами."
+        elif request.grade <= 9:
+            level_desc = f"ученик {request.grade} класса"
+            eval_note = "Оценивай по стандартам средней школы. Учитывай возраст."
+        else:
+            level_desc = f"ученик {request.grade} класса (подготовка к UNT)"
+            eval_note = "Оценивай строго, как на экзамене. Учитывай точность терминологии."
+
+        rubric_section = ""
+        if request.rubric and request.rubric.strip():
+            rubric_section = f"\n\nКритерии оценки от учителя:\n{request.rubric}\n"
+
+        eval_prompt = f"""Ты — эксперт-оценщик образовательной платформы.
+
+Твоя задача: оценить ответ ученика на вопрос.
+
+УРОВЕНЬ: {level_desc}
+{eval_note}
+{rubric_section}
+Вопрос: {request.question}
+
+Ответ ученика:
+{request.student_answer}
+
+Оцени ответ от 0 до 100 баллов.
+
+Критерии оценки:
+- Полнота ответа (охватывает ли все аспекты вопроса)
+- Точность (правильность фактов и утверждений)
+- Понятность (насколько ясно и логично изложено)
+- Адекватность уровню ученика (соответствует ли знаниям для этого класса)
+
+Верни ТОЛЬКО JSON в следующем формате, без markdown-обёрток:
+{{
+  "score": <число от 0 до 100>,
+  "feedback": "<краткий отзыв для ученика на русском, 2-3 предложения>",
+  "strengths": ["<сильная сторона 1>", "<сильная сторона 2>"],
+  "improvements": ["<что улучшить 1>", "<что улучшить 2>"],
+  "grade_level": "<оценка соответствия уровню: excellent/good/adequate/below_standard>"
+}}"""
+
+        response = platform.openai_client.chat.completions.create(
+            model=platform.chat_model,
+            messages=[
+                {"role": "system", "content": "Ты — эксперт-оценщик. Возвращай ТОЛЬКО валидный JSON без markdown."},
+                {"role": "user", "content": eval_prompt},
+            ],
+            temperature=0.3,
+        )
+
+        result_text = response.choices[0].message.content.strip()
+
+        # Clean up markdown code blocks if present
+        if result_text.startswith("```"):
+            result_text = result_text.split("\n", 1)[1] if "\n" in result_text else result_text[3:]
+            if result_text.endswith("```"):
+                result_text = result_text[:-3]
+            result_text = result_text.strip()
+
+        # Parse JSON
+        try:
+            result = json.loads(result_text)
+        except json.JSONDecodeError:
+            # Fallback if JSON parsing fails
+            return AssignmentEvaluateResponse(
+                score=50,
+                max_score=100,
+                feedback="Не удалось автоматически оценить ответ. Попробуйте ещё раз или обратитесь к учителю.",
+                strengths=[],
+                improvements=["Попробуйте ответить более подробно"],
+                grade_level="adequate",
+            )
+
+        # Validate score range
+        score = int(result.get("score", 50))
+        if score < 0:
+            score = 0
+        elif score > 100:
+            score = 100
+
+        return AssignmentEvaluateResponse(
+            score=score,
+            max_score=100,
+            feedback=result.get("feedback", ""),
+            strengths=result.get("strengths", []),
+            improvements=result.get("improvements", []),
+            grade_level=result.get("grade_level", "adequate"),
+        )
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Evaluation failed: {str(e)}")
 
 
 @app.post("/flashcards/generate")
